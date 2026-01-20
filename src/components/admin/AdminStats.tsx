@@ -65,6 +65,32 @@ const AdminStats = () => {
           </div>
         </div>
       </Card>
+      <Card className="p-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold mb-2">Collection Statistics</h2>
+          <div>
+            <select value={days} onChange={(e) => setDays(parseInt(e.target.value || '14', 10))} className="p-2 rounded border">
+              <option value={7}>Last 7 days</option>
+              <option value={14}>Last 14 days</option>
+              <option value={30}>Last 30 days</option>
+            </select>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-4 mt-4">
+          <div className="p-4 border rounded-lg">
+            <p className="text-sm text-muted-foreground">Total reports</p>
+            <p className="text-2xl font-semibold">{stats.totalReports}</p>
+          </div>
+          <div className="p-4 border rounded-lg">
+            <p className="text-sm text-muted-foreground">Total completed</p>
+            <p className="text-2xl font-semibold">{stats.totalCompleted}</p>
+          </div>
+          <div className="p-4 border rounded-lg">
+            <p className="text-sm text-muted-foreground">Completed today</p>
+            <p className="text-2xl font-semibold">{stats.completedToday}</p>
+          </div>
+        </div>
+      </Card>
 
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-3">Top Collectors (completed)</h3>
