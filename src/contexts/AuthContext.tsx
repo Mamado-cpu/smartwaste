@@ -2,9 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import api from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import { 
-  initializeMockData, 
-  getMockUsers, 
-  setMockUsers, 
+
   getCurrentUser, 
   setCurrentUser,
   MockUser 
@@ -28,7 +26,10 @@ interface AuthContextType {
     vehicleNumber?: string,
     vehicleType?: string
   ) => Promise<{ error: any }>;
-  signIn: (email: string, password: string, roleHint: string) => Promise<{ error: any }>;
+  signIn: (
+    email: string, 
+    password: string, 
+    roleHint: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
 }
 
@@ -43,12 +44,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Initialize mock data
-    initializeMockData();
-    
     // Check for existing session
     const token = localStorage.getItem('auth_token');
-      if (token) {
+    setLoading(true);
+    if (token) {
       // try to load user from backend
       api.get('/auth/me')
         .then((res) => {
@@ -63,10 +62,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             if (roles.includes('resident')) return 'resident';
             return roles[0] || null;
           };
-          setUserRole(chooseRole(u.roles));
+          const role = chooseRole(u.roles);
+          setUserRole(role);
           setIsApproved(u.isApproved || false);
           // Navigate to dashboard based on role
-          const role = chooseRole(u.roles);
           if (role === 'admin') navigate('/admin');
           else if (role === 'collector') navigate('/collector');
           else if (role === 'resident') navigate('/resident');
@@ -80,27 +79,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             setSession({ user: currentUser });
             setUserRole(currentUser.role || null);
             setIsApproved(currentUser.isApproved);
-            // Navigate to dashboard
             const role = currentUser.role;
             if (role === 'admin') navigate('/admin');
             else if (role === 'collector') navigate('/collector');
             else if (role === 'resident') navigate('/resident');
             else navigate('/');
           }
-        });
+        })
+        .finally(() => setLoading(false));
     } else {
       const currentUser = getCurrentUser();
       if (currentUser) {
         setUser(currentUser);
         setSession({ user: currentUser });
-          setUserRole(currentUser.role || null);
+        setUserRole(currentUser.role || null);
         setIsApproved(currentUser.isApproved);
       }
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
-  const signUp = async (username: string, email: string, password: string, fullName: string, phone: string, twoFactorEnabled = false, twoFactorMethod?: string, role?: string, vehicleNumber?: string, vehicleType?: string) => {
+  const signUp = async (
+    username: string, 
+    email: string, 
+    password: string, 
+    fullName: string, 
+    phone: string, 
+    twoFactorEnabled = false, 
+    twoFactorMethod?: string, 
+    role?: string, 
+    vehicleNumber?: string, 
+    vehicleType?: string) => {
     try {
       const payload: any = { 
         username, 
@@ -146,8 +155,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signIn = async (email: string, password: string, roleHint: string) => {
     try {
       console.log('API URL being used:', api.defaults.baseURL); // Debugging log to verify baseURL
-      console.log('Request Payload:', { email, password, roleHint }); // Debugging log to verify request payload
-      const res = await api.post('/auth/login', { email, password, roleHint }); // Include roleHint in the request
+      console.log('Request Payload:', { email, password, role:roleHint }); // Debugging log to verify request payload
+      const res = await api.post('/auth/login', { email, password, role:roleHint }); // Include roleHint in the request
       console.log('Server Response:', res); // Debugging log
       const user = res.data;
 

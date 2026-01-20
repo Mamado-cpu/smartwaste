@@ -102,6 +102,12 @@ const ManageBookings = () => {
                   <p className="text-sm text-muted-foreground">
                     Resident: {booking.residentName}
                   </p>
+                   <p className="text-sm text-muted-foreground">
+                    Phone: {booking.userId?.phone || 'N/A'}
+                  </p>
+                 
+                  
+
                   <p className="text-sm text-muted-foreground">
                     {new Date(booking.requestedAt).toLocaleString()}
                   </p>

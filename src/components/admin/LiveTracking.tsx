@@ -1,134 +1,222 @@
 import { useEffect, useState, useRef } from 'react';
 import { Card } from '@/components/ui/card';
-import { io as clientIo } from 'socket.io-client';
+import { io as clientIo, Socket } from 'socket.io-client';
 import { Truck } from 'lucide-react';
 import api from '@/lib/api';
 import MapView from '@/components/ui/map-view';
 
-const POLL_MS = 4000;
+interface Collector {
+  collectorId: string;
+  vehicleNumber?: string;
+  vehicleType?: string;
+  currentLat?: number;
+  currentLng?: number;
+  lastLocationUpdate?: string;
+  isAvailable?: boolean;
+}
 
 const LiveTracking = () => {
-  const [collectors, setCollectors] = useState<any[]>([]);
+  const [collectors, setCollectors] = useState<Collector[]>([]);
   const [loading, setLoading] = useState(true);
-  const pollRef = useRef<number | null>(null);
-  const esRef = useRef<EventSource | null>(null);
 
-  const fetch = async () => {
+  const socketRef = useRef<Socket | null>(null);
+
+  /**
+   * 🔹 INITIAL FETCH (RUNS ONCE)
+   */
+  const fetchInitialCollectors = async () => {
     try {
       const token = localStorage.getItem('auth_token');
+
       const res = await api.get('/locations/admin/collectors', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
+
       const data = res.data || [];
-      const arr = data.map((c: any) => ({
+
+      const mapped: Collector[] = data.map((c: any) => ({
         collectorId: c.collectorId || c._id || c.id,
         vehicleNumber: c.vehicleNumber,
         vehicleType: c.vehicleType,
-        currentLat: c.lastKnownLocation?.latitude || c.realtimeLocation?.latitude,
-        currentLng: c.lastKnownLocation?.longitude || c.realtimeLocation?.longitude,
-        lastLocationUpdate: c.lastKnownLocation?.timestamp || c.realtimeLocation?.timestamp,
-        isAvailable: c.isAvailable
+        currentLat:
+          c.lastKnownLocation?.latitude ||
+          c.realtimeLocation?.latitude,
+        currentLng:
+          c.lastKnownLocation?.longitude ||
+          c.realtimeLocation?.longitude,
+        lastLocationUpdate:
+          c.lastKnownLocation?.timestamp ||
+          c.realtimeLocation?.timestamp,
+        isAvailable: (c.lastKnownLocation?.latitude || c.realtimeLocation?.latitude) &&
+               (c.lastKnownLocation?.longitude || c.realtimeLocation?.longitude)
+               ? c.isAvailable ?? true
+               : false
       }));
-      setCollectors(arr.filter(c => c.currentLat && c.currentLng));
-    } catch (err) {
-      setCollectors([]);
+
+      setCollectors(mapped);
+    } catch (e) {
+      console.error('Failed to fetch collectors');
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * 🔹 SOCKET SETUP
+   */
   useEffect(() => {
     let mounted = true;
     const token = localStorage.getItem('auth_token');
 
-    try {
-      const base = (api.defaults.baseURL || '').replace(/\/api$/, '');
-      const socket = (window as any).__admin_socket || clientIo(base, { query: { role: 'admin' }, auth: { token } });
-      (window as any).__admin_socket = socket;
-      socket.on('collector:update', (payload: any) => {
-        if (!mounted) return;
-        try {
-          const data = payload || {};
-          const arr = Array.isArray(data) ? data : [data];
-          const mapped = arr.map((v: any) => ({ collectorId: v.collectorId, vehicleNumber: v.vehicleNumber, vehicleType: v.vehicleType, currentLat: v.latitude, currentLng: v.longitude, lastLocationUpdate: v.timestamp, isAvailable: v.isOnline ?? true }));
-          setCollectors(mapped.filter(c => c.currentLat && c.currentLng));
-          setLoading(false);
-        } catch (e) {}
-      });
-      socket.on('connect_error', () => {
-        // fallback to SSE/polling
-        try { if ((window as any).__admin_socket) (window as any).__admin_socket = null; } catch (e) {}
-        fetch();
-        pollRef.current = window.setInterval(fetch, POLL_MS) as unknown as number;
-      });
-    } catch (err) {
-      fetch();
-      pollRef.current = window.setInterval(fetch, POLL_MS) as unknown as number;
-    }
+    fetchInitialCollectors(); // ✅ fetch ONCE
 
-    // Listen for collector updates (e.g., vehicle number change)
-    const collectorHandler = () => fetch();
-    window.addEventListener('collector:updated', collectorHandler);
+    const baseURL = (api.defaults.baseURL || '').replace(/\/api$/, '');
 
-    return () => { mounted = false; if (pollRef.current) window.clearInterval(pollRef.current); if (esRef.current) try { esRef.current.close(); } catch (e) {} ; window.removeEventListener('collector:updated', collectorHandler); };
+    const socket =
+      (window as any).__admin_socket ||
+      clientIo(baseURL, {
+        auth: { token },
+        query: { role: 'admin' },
+        transports: ['websocket'],
+      });
+
+    (window as any).__admin_socket = socket;
+    socketRef.current = socket;
+
+    socket.on('collector:update', (payload: any) => {
+      if (!mounted || !payload) return;
+
+      const updates = Array.isArray(payload) ? payload : [payload];
+
+      setCollectors((prev) => {
+        const map = new Map<string, Collector>(
+          prev.map((c) => [c.collectorId, c])
+        );
+
+        updates.forEach((u: any) => {
+          if (!u.collectorId) return;
+
+          const prev = map.get(u.collectorId);
+
+          map.set(u.collectorId, {
+            collectorId: u.collectorId,
+            vehicleNumber: u.vehicleNumber  ?? prev?.vehicleNumber ?? 'Truck',
+            vehicleType: u.vehicleType ?? prev?.vehicleType ?? 'Collector',
+            currentLat: u.latitude,
+            currentLng: u.longitude,
+            lastLocationUpdate: u.timestamp,
+            isAvailable:u.latitude && u.longitude ? u.isOnline ?? true : false
+          });
+        });
+
+        return Array.from(map.values());
+      });
+    });
+
+    socket.on('connect_error', (err) => {
+      console.warn('Socket failed, staying with initial data', err.message);
+    });
+
+    return () => {
+      mounted = false;
+      socket.off('collector:update');
+    };
   }, []);
 
-  if (loading) return <Card className="p-6"><p className="text-center">Loading...</p></Card>;
+  if (loading) {
+    return (
+      <Card className="p-6">
+        <p className="text-center">Loading collectors...</p>
+      </Card>
+    );
+  }
 
-  const markers = collectors.map(c => ({ id: c.collectorId, position: [c.currentLat, c.currentLng] as [number, number], title: c.vehicleNumber, description: `Updated: ${c.lastLocationUpdate ? new Date(c.lastLocationUpdate).toLocaleTimeString() : 'N/A'}` }));
+  /**
+   * 🔹 MAP MARKERS (ONLY VALID GPS)
+   */
+
+  // Small offset to avoid overlapping markers
+const jitter = () => (Math.random() - 0.5) * 0.0001;
+
+  const markers = collectors
+    .filter((c) => c.currentLat !== undefined && c.currentLng !== undefined)
+    .map((c) => ({
+      id: c.collectorId,
+      position: [
+        c.currentLat! + jitter(), 
+        c.currentLng! + jitter()] as [number, number],
+      title: c.vehicleNumber || 'Truck',
+      description: c.lastLocationUpdate
+        ? `Updated: ${new Date(c.lastLocationUpdate).toLocaleTimeString()}`
+        : 'No recent update',
+    }));
+
+console.log('[ADMIN TRACKING] collectors with GPS:', collectors.filter(c => c.currentLat && c.currentLng));
+
 
   return (
+    
     <div className="space-y-4">
+      {/* LIST */}
       <Card className="p-6">
         <h2 className="text-2xl font-bold mb-4">Live Truck Tracking</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          Real-time location of all collection trucks
-        </p>
-        
+
         {collectors.length === 0 ? (
-          <p className="text-center text-muted-foreground py-8">No active trucks</p>
+          <p className="text-center text-muted-foreground py-8">
+            No collectors found
+          </p>
         ) : (
           <div className="space-y-3">
             {collectors.map((collector) => (
-              <div 
+              <div
                 key={collector.collectorId}
-                className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50"
               >
                 <div className="flex items-center gap-3">
                   <Truck className="h-5 w-5 text-primary" />
                   <div>
-                    <p className="font-medium">{collector.vehicleNumber}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {collector.vehicleType || 'Truck'}
+                    <p className="font-medium">
+                      {collector.vehicleNumber || 'Truck'}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      Location: {collector.currentLat?.toFixed(4)}, {collector.currentLng?.toFixed(4)}
+                      {collector.vehicleType || 'Collector'}
                     </p>
-                    {collector.lastLocationUpdate && (
-                      <p className="text-xs text-muted-foreground">
-                        Updated: {new Date(collector.lastLocationUpdate).toLocaleTimeString()}
-                      </p>
-                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {collector.currentLat && collector.currentLng
+                        ? `Location: ${collector.currentLat.toFixed(
+                            4
+                          )}, ${collector.currentLng.toFixed(4)}`
+                        : 'No GPS yet'}
+                    </p>
                   </div>
                 </div>
-                <div className={`px-3 py-1 rounded-full text-xs ${
-                  collector.isAvailable 
-                    ? 'bg-green-500/10 text-green-600' 
-                    : 'bg-yellow-500/10 text-yellow-600'
-                }`}>
-                  {collector.isAvailable ? 'Available' : 'On Job'}
-                </div>
+
+                <span
+                  className={`px-3 py-1 rounded-full text-xs ${
+                    collector.isAvailable
+                      ? 'bg-green-500/10 text-green-600'
+                      : 'bg-yellow-500/10 text-yellow-600'
+                  }`}
+                >
+                  {collector.isAvailable ? 'Available' : 'Not Available'}
+                </span>
               </div>
             ))}
           </div>
         )}
       </Card>
+
+      {/* MAP */}
       
+
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-3">Map View</h3>
-        <MapView center={markers[0] ? markers[0].position : [13.4549, -16.579]} zoom={11} markers={markers.map(m => ({ position: m.position, title: m.title, description: m.description }))} />
+        
+        <MapView
+          center={markers[0]?.position || [13.4549, -16.579]}
+          zoom={11}
+          markers={markers}
+        />
       </Card>
     </div>
   );

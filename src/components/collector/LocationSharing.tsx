@@ -14,13 +14,51 @@ const LocationSharing = ({ collectorId }: { collectorId: string | null }) => {
   const lastPosRef = useRef<{ lat: number; lng: number; ts: string } | null>(null);
 
   useEffect(() => {
-    return () => {
-      if (watchId !== null) {
-        try { navigator.geolocation.clearWatch(watchId); } catch (e) {}
+    // On mount: if sharing was active previously (persisted), re-initialize sharing
+    const persisted = localStorage.getItem('collector_sharing');
+    if (persisted === 'true') {
+      // restore sharing without user interaction
+      tryInitSocket();
+      setIsSharing(true);
+      // start the periodic sender if not already running
+      if (intervalRef.current === null) {
+        const iid = window.setInterval(async () => {
+          const p = lastPosRef.current;
+          if (!p) return;
+          try {
+            if (collectorId) {
+              const socket = (window as any).__collector_socket as any;
+              if (socket && socket.connected) {
+                socket.emit('collector:location', { collectorId, latitude: p.lat, longitude: p.lng, timestamp: p.ts, isOnline: true });
+              } else {
+                await api.post('/locations/update', {
+                  latitude: p.lat,
+                  longitude: p.lng,
+                  timestamp: p.ts,
+                  isOnline: true
+                });
+                tryInitSocket();
+              }
+            }
+          } catch (err: any) {
+            console.error('Failed to send periodic location (restore)', err);
+          }
+        }, 10000) as unknown as number;
+        intervalRef.current = iid;
       }
-      if (intervalRef.current !== null) {
-        try { window.clearInterval(intervalRef.current); } catch (e) {}
-        intervalRef.current = null;
+    }
+
+    return () => {
+      // On unmount: do not stop sharing if user opted to keep sharing (persisted flag)
+      const stillSharing = localStorage.getItem('collector_sharing') === 'true';
+      if (!stillSharing) {
+        if (watchId !== null) {
+          try { navigator.geolocation.clearWatch(watchId); } catch (e) {}
+        }
+        if (intervalRef.current !== null) {
+          try { window.clearInterval(intervalRef.current); } catch (e) {}
+          intervalRef.current = null;
+        }
       }
     };
   }, []);
@@ -61,8 +99,22 @@ const LocationSharing = ({ collectorId }: { collectorId: string | null }) => {
       console.warn('getCurrentPosition error', err);
       if (err && err.code === 1) {
         toast.error('Location permission denied');
+      } else if (err && err.code === 2) {
+        toast.error('Location unavailable');
       } else if (err && err.code === 3) {
-        toast.info('Waiting for GPS fix...');
+        // Timeout — retry with lower accuracy and longer timeout
+        toast.info('GPS timeout; retrying with lower accuracy');
+        try {
+          navigator.geolocation.getCurrentPosition((position) => {
+            const p = { lat: position.coords.latitude, lng: position.coords.longitude, ts: new Date().toISOString() };
+            lastPosRef.current = p;
+            setPreview(p);
+          }, () => {
+            toast.error('Unable to obtain location. Check GPS or permissions.');
+          }, { enableHighAccuracy: false, maximumAge: 60000, timeout: 30000 });
+        } catch (e) {
+          console.warn('Retry getCurrentPosition failed', e);
+        }
       }
     }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
 
@@ -74,7 +126,27 @@ const LocationSharing = ({ collectorId }: { collectorId: string | null }) => {
         setPreview(p);
       }, (err) => {
         console.warn('watchPosition error', err);
-        if (err && err.code === 1) toast.error('Location permission denied');
+        if (err && err.code === 1) {
+          toast.error('Location permission denied');
+        } else if (err && err.code === 3) {
+          // watch timeout — attempt to restart watch with lower accuracy
+          toast.info('GPS watch timeout; retrying with lower accuracy');
+          try {
+            if (watchId !== null) { navigator.geolocation.clearWatch(watchId); }
+          } catch (e) {}
+          setTimeout(() => {
+            try {
+              const retryId = navigator.geolocation.watchPosition((position) => {
+                const p = { lat: position.coords.latitude, lng: position.coords.longitude, ts: new Date().toISOString() };
+                lastPosRef.current = p;
+                setPreview(p);
+              }, (e2) => {
+                console.warn('retry watchPosition error', e2);
+              }, { enableHighAccuracy: false, maximumAge: 60000, timeout: 30000 });
+              setWatchId(retryId as unknown as number);
+            } catch (e) { console.warn('retry watchPosition failed', e); }
+          }, 2000);
+        }
       }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
       setWatchId(wId as unknown as number);
     } catch (e) {
@@ -108,6 +180,8 @@ const LocationSharing = ({ collectorId }: { collectorId: string | null }) => {
     }, 10000) as unknown as number;
     intervalRef.current = iid;
     setIsSharing(true);
+    // persist choice so sharing continues across navigation within the app
+    try { localStorage.setItem('collector_sharing', 'true'); } catch (e) {}
     toast.success('Location sharing started');
   };
 
@@ -133,6 +207,7 @@ const LocationSharing = ({ collectorId }: { collectorId: string | null }) => {
       try { window.clearInterval(intervalRef.current); } catch (e) {}
       intervalRef.current = null;
     }
+    try { localStorage.removeItem('collector_sharing'); } catch (e) {}
     // Tell backend we're offline
     (async () => {
       try {
@@ -171,7 +246,10 @@ const LocationSharing = ({ collectorId }: { collectorId: string | null }) => {
           </div>
           {preview && (
             <div className="mb-4">
-              <MapView center={[preview.lat, preview.lng]} zoom={16} markers={[{ position: [preview.lat, preview.lng], title: 'You', description: `Updated: ${new Date(preview.ts).toLocaleTimeString()}` }]} />
+              <MapView center={[preview.lat, preview.lng]} zoom={16} markers={[{
+                position: [preview.lat, preview.lng], title: 'You', description: `Updated: ${new Date(preview.ts).toLocaleTimeString()}`,
+                id: ''
+              }]} />
             </div>
           )}
           <Button variant="destructive" onClick={stopSharing} className="w-full">

@@ -7,6 +7,7 @@ import ReportDumpingForm from '@/components/resident/ReportDumpingForm';
 import TrackTrucks from '@/components/resident/TrackTrucks';
 import MyBookings from '@/components/resident/MyBookings';
 import MyReports from '@/components/resident/MyReports';
+import Profile from '@/pages/resident/Profile';
 import { LogOut } from 'lucide-react';
 
 const ResidentDashboard = () => {
@@ -27,12 +28,13 @@ const ResidentDashboard = () => {
 
       <div className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-5 mb-8">
+          <TabsList className="grid w-full grid-cols-6 mb-8">
             <TabsTrigger value="book">Book Service</TabsTrigger>
             <TabsTrigger value="report">Report Dumping</TabsTrigger>
             <TabsTrigger value="track">Track Trucks</TabsTrigger>
             <TabsTrigger value="bookings">My Bookings</TabsTrigger>
             <TabsTrigger value="reports">My Reports</TabsTrigger>
+            <TabsTrigger value="profile">My Profile</TabsTrigger>
           </TabsList>
 
           <TabsContent value="book">
@@ -53,6 +55,10 @@ const ResidentDashboard = () => {
 
           <TabsContent value="reports">
             <MyReports />
+          </TabsContent>
+
+          <TabsContent value="profile">
+            <Profile />
           </TabsContent>
         </Tabs>
       </div>

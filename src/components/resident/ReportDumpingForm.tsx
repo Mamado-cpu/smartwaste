@@ -15,7 +15,7 @@ const ReportDumpingForm = () => {
   const [lat, setLat] = useState('');
   const [lng, setLng] = useState('');
   const [description, setDescription] = useState('');
-  const [photo, setPhoto] = useState<File | null>(null); // State for photo
+  // photo upload removed to restore previous flow
   const [loading, setLoading] = useState(false);
 
   const getCurrentLocation = () => {
@@ -37,9 +37,7 @@ const ReportDumpingForm = () => {
   const navigate = useNavigate();
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setPhoto(e.target.files[0]);
-    }
+    // intentionally left blank - photo upload removed
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,20 +55,15 @@ const ReportDumpingForm = () => {
 
     setLoading(true);
     try{
-      const formData = new FormData();
-      formData.append('locationAddress', address);
-      formData.append('locationLat', lat);
-      formData.append('locationLng', lng);
-      formData.append('description', description);
-      if (photo) {
-        formData.append('photo', photo);
-      }
+      // send JSON payload (no file upload)
+      const payload = {
+        locationAddress: address,
+        locationLat: lat,
+        locationLng: lng,
+        description,
+      };
 
-      const res = await api.post('/reports', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      const res = await api.post('/reports', payload);
       setLoading(false);
       toast.success('Report submitted successfully!');
       // clear form
@@ -78,7 +71,7 @@ const ReportDumpingForm = () => {
       setLat('');
       setLng('');
       setDescription('');
-      setPhoto(null);
+      // photo removed
       // refresh report list UI
       window.dispatchEvent(new Event('report:created'));
       navigate('/resident/reports');
@@ -145,15 +138,7 @@ const ReportDumpingForm = () => {
           />
         </div>
 
-        <div>
-          <Label htmlFor="photo">Upload Photo</Label>
-          <Input
-            id="photo"
-            type="file"
-            accept="image/*"
-            onChange={handlePhotoChange}
-          />
-        </div>
+        {/* Photo upload removed - restored previous flow */}
 
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? 'Submitting...' : 'Submit Report'}

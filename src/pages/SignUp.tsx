@@ -16,6 +16,7 @@ const SignUp = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [vehicleType, setVehicleType] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,12 +27,12 @@ const SignUp = () => {
   const { signUp } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const roleHint = searchParams.get('role') || 'collector'; // Default to collector for this page
+  const roleHint = searchParams.get('role') || 'resident'; // Default to collector for this page
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!username || !email || !password || !fullName) {
+    if (!username || !email || !password || !fullName || !phone) {
       toast.error('Please fill in all fields');
       return;
     }
@@ -43,7 +44,17 @@ const SignUp = () => {
 
     setLoading(true);
     const cleanUsername = (username || '').trim().toLowerCase();
-    const res: any = await signUp(cleanUsername, email, password, fullName, undefined, false, 'email', roleHint || undefined, vehicleNumber || undefined, vehicleType || undefined);
+    const res: any = await signUp(
+      cleanUsername, 
+      email, 
+      password, 
+      fullName, 
+      phone,      
+      false, 
+      'email', 
+      roleHint || undefined, 
+      vehicleNumber || undefined, 
+      vehicleType || undefined);
     setLoading(false);
 
     if (res?.error) {
@@ -133,7 +144,7 @@ const SignUp = () => {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="johndoe"
+              placeholder="dj"
               required
             />
           </div>
@@ -145,7 +156,19 @@ const SignUp = () => {
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="John Doe"
+              placeholder="Donal Trump"
+              required
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="phone">Phone Number</Label>
+            <Input
+              id="phone"
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+220 123 4567"
               required
             />
           </div>
@@ -163,17 +186,7 @@ const SignUp = () => {
           </div>
 
 
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-            />
-          </div>
+          
 
           {roleHint === 'collector' && (
             <>
@@ -184,7 +197,7 @@ const SignUp = () => {
                   type="text"
                   value={vehicleNumber}
                   onChange={(e) => setVehicleNumber(e.target.value)}
-                  placeholder="GW-1234"
+                  placeholder="BJL 3010 A"
                 />
               </div>
               <div>
@@ -194,7 +207,7 @@ const SignUp = () => {
                   type="text"
                   value={vehicleType}
                   onChange={(e) => setVehicleType(e.target.value)}
-                  placeholder="Truck, Van, etc."
+                  placeholder="Truck, miniTruck, etc."
                 />
               </div>
             </>

@@ -58,9 +58,10 @@ const CollectorDashboard = () => {
             <h1 className="text-2xl font-bold">Collector Dashboard</h1>
             {collectorData && (
               <div className="text-sm text-muted-foreground">
-                <p>Vehicle: {collectorData.vehicleNumber || collectorData.vehicleType || 'No vehicle info'}</p>
                 <p>{collectorData.userId?.fullName || collectorData.userId?.username}</p>
-                {collectorData.userId?.phone && <p className="text-xs">{collectorData.userId.phone}</p>}
+
+
+                <p>Phone {collectorData.userId?.phone && <p className="text-xs">{collectorData.userId.phone}</p>}</p>
               </div>
             )}
           </div>
@@ -109,6 +110,8 @@ const CollectorDashboard = () => {
                     </div>
                   )}
                 </div>
+                <p>Vehicle {collectorData.vehicleNumber || collectorData.vehicleType || 'No vehicle info'}</p>
+
                 {collectorData.userId?.email && <div className="text-sm text-muted-foreground">{collectorData.userId.email}</div>}
               </div>
             </div>

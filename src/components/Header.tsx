@@ -14,6 +14,11 @@ const Header = () => {
             <div className="h-8 w-8 rounded-lg bg-gradient-hero flex items-center justify-center">
               <span className="text-white font-bold text-sm">🇬🇲</span>
             </div>
+
+               
+
+
+
             <div>
               <h1 className="font-bold text-lg text-foreground">SmartWaste</h1>
               <p className="text-xs text-muted-foreground">The Gambia</p>

@@ -44,6 +44,7 @@ const ManageReports = () => {
         const id = (r._id || r.id)?.toString?.() || '';
         // reporterName: backend may populate userId
         const reporterName = (r.userId && (r.userId.fullName || r.userId.name)) || users.find(u => ((u._id || u.id)?.toString?.() === (r.userId?._id || r.userId)?.toString?.()))?.fullName;
+        const reporterPhone = (r.userId && (r.userId.phone || r.userId?.contact)) || users.find(u => ((u._id || u.id)?.toString?.() === (r.userId?._id || r.userId)?.toString?.()))?.phone;
 
         // collectorVehicle: collectorsData is an array of detailedLocations with collectorId
         const coll = collectorsData.find(c => ((c.collectorId || c._id || c.id)?.toString?.() || '') === ((r.collectorId || '')?.toString?.() || ''));
@@ -53,6 +54,7 @@ const ManageReports = () => {
           ...r,
           id,
           reporterName: reporterName || 'Unknown',
+          reporterPhone: reporterPhone || 'N/A',
           collectorVehicle,
           reportedAt: r.reportedAt || r.createdAt || r.createdAtAt || r.created_at
         };
@@ -120,9 +122,17 @@ const ManageReports = () => {
                     Reporter: {report.reporterName}
                   </p>
                   <p className="text-sm text-muted-foreground">
+                    Phone: {report.reporterPhone || (report.userId?.phone || 'N/A')}
+                  </p>
+
+                  
+                  
+                 
+                  <p className="text-sm mt-1">{report.description}</p>
+
+                  <p className="text-sm text-muted-foreground">
                     {new Date(report.reportedAt).toLocaleString()}
                   </p>
-                  <p className="text-sm mt-1">{report.description}</p>
                   {report.collectorVehicle && (
                     <p className="text-sm text-muted-foreground">
                       Assigned: {report.collectorVehicle}

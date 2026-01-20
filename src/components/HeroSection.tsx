@@ -18,12 +18,13 @@ const HeroSection = () => {
               Connecting communities across The Gambia for cleaner, healthier environments
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button variant="hero" size="lg" className="text-lg px-8 py-4">
+              <Button variant="hero" size="lg" className="text-lg px-8 py-4"
+              onClick={() => navigate('/signup?role=resident')}>
                 Get Started Today
               </Button>
-              <Button variant="outline" size="lg" className="text-lg px-8 py-4 shadow-medium">
+              {/* <Button variant="outline" size="lg" className="text-lg px-8 py-4 shadow-medium">
                 Learn More
-              </Button>
+              </Button> */}
             </div>
           </div>
         </div>
@@ -39,7 +40,7 @@ const HeroSection = () => {
               <p className="text-white/85 mb-6">
                 Book sewage disposal services and report illegal dumping in your community
               </p>
-              <Button variant="gambian" className="w-full" onClick={() => navigate('/signup?role=resident')}>
+              <Button variant="gambian" className="w-full" onClick={() => navigate('/login?role=resident')}>
                 Access Resident Portal
               </Button>
             </div>

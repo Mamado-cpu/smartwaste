@@ -5,10 +5,12 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import api from '@/lib/api';
 import TaskDetails from './TaskDetails';
+import MapView from '@/components/ui/map-view';
 
 interface Task {
   id: string;
   type: 'booking' | 'report';
+  source?: string | null; // 'sewage' | 'garbage' | null for reports
   locationAddress: string;
   status: string;
   details: string;
@@ -21,6 +23,7 @@ const TaskList = ({ collectorId }: { collectorId: string | null }) => {
   const [collectorProfile, setCollectorProfile] = useState<any | null>(null);
   const [selectedTask, setSelectedTask] = useState<any | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [collectorsOnMap, setCollectorsOnMap] = useState<any[]>([]);
 
   useEffect(() => {
     fetchTasks();
@@ -55,18 +58,22 @@ const TaskList = ({ collectorId }: { collectorId: string | null }) => {
       const reports = repRes.data || [];
 
       const allTasks: Task[] = [
-        ...bookings.filter((b: any) => b.status !== 'completed').map((b: any) => ({
+        // include bookings of all statuses so collectors can still see completed tasks
+        ...bookings.map((b: any) => ({
           id: b._id || b.id,
           type: 'booking' as const,
           locationAddress: b.locationAddress,
           status: b.status,
-          details: b.notes || 'Sewage disposal service',
+          // include source (serviceType) so collector knows whether it's sewage or garbage
+          source: b.serviceType || 'garbage',
+          details: b.notes || (b.serviceType === 'sewage' ? 'Sewage disposal service' : 'Garbage collection'),
           user: b.userId || b.user,
           locationLat: b.locationLat,
           locationLng: b.locationLng,
           raw: b
         })),
-        ...reports.filter((r: any) => r.status !== 'cleared').map((r: any) => ({
+        // include reports of all statuses so cleared reports remain visible
+        ...reports.map((r: any) => ({
           id: r._id || r.id,
           type: 'report' as const,
           locationAddress: r.locationAddress,
@@ -80,6 +87,21 @@ const TaskList = ({ collectorId }: { collectorId: string | null }) => {
       ];
 
       setTasks(allTasks);
+      // also fetch other collectors locations to show on the map
+      try {
+        const cRes = await api.get('/locations/collectors');
+        const cData = cRes.data || {};
+        const arr = Object.entries(cData).map(([id, v]: any) => ({
+          collectorId: id,
+          latitude: v.latitude || v.locationLat || v.locationLat,
+          longitude: v.longitude || v.locationLng || v.locationLng,
+          vehicleNumber: v.vehicleNumber || v.collectorInfo?.vehicleNumber,
+          lastUpdated: v.timestamp || v.lastUpdated
+        }));
+        setCollectorsOnMap(arr.filter(a => a.latitude && a.longitude));
+      } catch (e) {
+        setCollectorsOnMap([]);
+      }
     } catch (err: any) {
       console.error('Failed to load tasks', err);
       const msg = err?.response?.data?.message || err.message || 'Failed to load tasks';
@@ -120,22 +142,7 @@ const TaskList = ({ collectorId }: { collectorId: string | null }) => {
   return (
     <Card className="p-6">
       <h2 className="text-2xl font-bold mb-6">My Tasks</h2>
-      {collectorProfile ? (
-        <div className="mb-4 flex items-center gap-4">
-          <div className="rounded-full bg-primary/10 text-primary w-12 h-12 flex items-center justify-center">🚚</div>
-          <div>
-            <p className="font-medium">{collectorProfile.userId?.fullName || collectorProfile.userId?.username || 'Collector'}</p>
-            <p className="text-sm text-muted-foreground">{collectorProfile.vehicleNumber || collectorProfile.vehicleType || 'No vehicle info'}</p>
-            {collectorProfile.userId?.phone && <p className="text-xs text-muted-foreground">{collectorProfile.userId.phone}</p>}
-          </div>
-        </div>
-      ) : (
-        !collectorId && <p className="text-sm text-muted-foreground mb-4">Collector profile not yet loaded — showing tasks for authenticated collector.</p>
-      )}
-      {error && (
-        <p className="text-sm text-red-600 mb-4">{error}</p>
-      )}
-      
+     
       {tasks.length === 0 ? (
         <p className="text-center text-muted-foreground py-8">No tasks assigned</p>
       ) : (
@@ -145,10 +152,9 @@ const TaskList = ({ collectorId }: { collectorId: string | null }) => {
               <div className="flex justify-between items-start mb-3">
                 <div>
                   <Badge variant="outline" className="mb-2">
-                    {task.type === 'booking' ? '🚰 Sewage' : '🚨 Report'}
+                    {task.type === 'booking' ? (task.source === 'sewage' ? '🚰 Sewage Booking' : '🗑️ Garbage Booking') : '🚨 Report'}
                   </Badge>
-                  <p className="font-medium">{task.locationAddress}</p>
-                  <p className="text-sm text-muted-foreground mt-1">{task.details}</p>
+                  <p className="font-medium">{task.details}</p>
                 </div>
                 <Badge>{(task.status || 'pending').replace('_', ' ')}</Badge>
               </div>
@@ -176,6 +182,39 @@ const TaskList = ({ collectorId }: { collectorId: string | null }) => {
         </div>
       )}
       <TaskDetails task={selectedTask} open={detailsOpen} onClose={() => setDetailsOpen(false)} />
+      {/* Map showing collectors and task locations
+      {/* <Card className="p-6 mt-6">
+        <h3 className="text-lg font-semibold mb-3">Map: Tasks & Collectors</h3>
+        {
+          (() => {
+            const taskMarkers = tasks
+              .filter((t: any) => t.locationLat && t.locationLng)
+              .map((t: any) => ({
+                id: `t-${t.id}`,
+                position: [t.locationLat, t.locationLng] as [number, number],
+                title: t.type === 'booking' ? `Booking: ${t.source || ''}` : 'Report',
+                description: `${t.details}\nStatus: ${t.status}`,
+                type: 'pin'
+              }));
+
+            const collectorMarkers = collectorsOnMap.map((c: any) => ({
+              id: `c-${c.collectorId}`,
+              position: [c.latitude, c.longitude] as [number, number],
+              title: c.vehicleNumber || `Collector ${c.collectorId}`,
+              description: `Updated: ${c.lastUpdated ? new Date(c.lastUpdated).toLocaleTimeString() : 'N/A'}`,
+              type: 'truck'
+            }));
+
+            const markers = [...taskMarkers, ...collectorMarkers];
+
+            return markers.length > 0 ? (
+              <MapView center={markers[0].position} zoom={13} markers={markers} />
+            ) : (
+              <p className="text-muted-foreground">No map data available</p>
+            );
+          })()
+        }
+      </Card> */}
     </Card>
   );
 };

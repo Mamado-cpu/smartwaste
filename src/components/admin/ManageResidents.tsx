@@ -58,7 +58,9 @@ const ManageResidents = () => {
                 </div>
                 <p className="text-sm text-muted-foreground">{resident.email}</p>
                 <p className="text-sm text-muted-foreground">{resident.phone}</p>
+                <p className="text-sm text-muted-foreground">{resident.location}</p>
               </div>
+              
               
                 <div className="flex gap-2">
                 {/* Approval button removed — residents are auto-approved */}

@@ -18,7 +18,7 @@ const Login = () => {
   const { signIn, user, userRole } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const roleHint = searchParams.get('role');
+  const roleHint = searchParams.get('role') || 'resident';
 
   useEffect(() => {
     if (user && userRole) {
@@ -68,10 +68,10 @@ const Login = () => {
     }
 
     // Restrict access based on role
-    if (res?.user?.role !== roleHint) {
-      toast.error(`Access denied. You must log in as ${roleHint}.`);
-      return;
-    }
+    if (res?.error) {
+  toast.error(res.error.message);
+  return;
+}
 
     if (res?.error?.message === 'Access denied. Role mismatch.') {
       toast.error('Access denied. Please log in with the correct role.');
@@ -146,7 +146,7 @@ const Login = () => {
         <div className="text-center mb-6">
           <div className="flex items-center justify-between mb-3">
             <Button variant="ghost" onClick={() => navigate(-1)}>Back</Button>
-            {roleHint ? <div className="text-sm text-muted-foreground">Login as: <strong>{roleHint}</strong></div> : null}
+            {roleHint ? <div className="text-sm  text-muted-foreground">Login as: <strong>{roleHint}</strong></div> : null}
           </div>
           <h1 className="text-3xl font-bold mb-2">Welcome Back</h1>
           <p className="text-muted-foreground">Login to SmartWaste</p>
@@ -212,20 +212,24 @@ const Login = () => {
         </form>
 
         <div className="mt-4 text-center">
-          <p className="text-sm text-muted-foreground">
-            Don't have an account?{' '}
-            <Link to={`/signup?role=${roleHint || 'resident'}`} className="text-primary hover:underline">
-              Sign Up
-            </Link>
-          </p>
-          {(roleHint === 'collector' || roleHint === 'resident') && (
-            <div className="text-center mt-4">
-              <Link to="/forgot-password" className="text-sm text-primary hover:underline">
-                Forgot your password?
-              </Link>
-            </div>
-          )}
-        </div>
+  {(roleHint === 'collector' || roleHint === 'resident') && (
+    <>
+      <p className="text-sm text-muted-foreground">
+        Don't have an account?{' '}
+        <Link to={`/signup?role=${roleHint}`} className="text-primary hover:underline">
+          Sign Up
+        </Link>
+      </p>
+
+      {/* <div className="text-center mt-4">
+        <Link to="/forgot-password" className="text-sm text-primary hover:underline">
+          Forgot your password?
+        </Link>
+      </div> */}
+    </>
+  )}
+</div>
+
       </Card>
     </div>
   );

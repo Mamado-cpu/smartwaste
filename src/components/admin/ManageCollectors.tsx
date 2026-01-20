@@ -109,10 +109,10 @@ const ManageCollectors = () => {
         
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button>
+            {/* <Button>
               <Plus className="mr-2 h-4 w-4" />
               Add Collector
-            </Button>
+            </Button> */}
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -173,7 +173,7 @@ const ManageCollectors = () => {
                 <Input
                   value={formData.vehicleType}
                   onChange={(e) => setFormData({...formData, vehicleType: e.target.value})}
-                  placeholder="e.g., Truck, Van"
+                  placeholder="e.g., Truck, miniTruck"
                 />
               </div>
               <Button type="submit" className="w-full">Create Collector</Button>
@@ -199,7 +199,7 @@ const ManageCollectors = () => {
                   <p className="font-medium">{userName}</p>
                   <p className="text-sm text-muted-foreground">{vehicle}</p>
                   <p className="text-sm text-muted-foreground">{phone}</p>
-                </div>
+               </div>
                 
                 <Button size="sm" variant="destructive" onClick={() => deleteCollector(userId)}>
                   <Trash2 className="h-4 w-4" />

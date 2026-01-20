@@ -29,14 +29,16 @@ const MyReports = () => {
   useEffect(() => {
     fetchReports();
 
-    const handler = () => fetchReports();
-    window.addEventListener('report:created', handler);
-    window.addEventListener('report:updated', handler);
-    window.addEventListener('task:updated', (e: any) => { if (e?.detail?.type === 'report') fetchReports(); });
+    const onRefresh = () => fetchReports();
+    const onTaskUpdated = (e: any) => { if (e?.detail?.type === 'report') fetchReports(); };
+
+    window.addEventListener('report:created', onRefresh);
+    window.addEventListener('report:updated', onRefresh);
+    window.addEventListener('task:updated', onTaskUpdated);
     return () => {
-      window.removeEventListener('report:created', handler);
-      window.removeEventListener('report:updated', handler);
-      window.removeEventListener('task:updated', (e: any) => {});
+      window.removeEventListener('report:created', onRefresh);
+      window.removeEventListener('report:updated', onRefresh);
+      window.removeEventListener('task:updated', onTaskUpdated);
     };
   }, [user]);
 
