@@ -39,6 +39,9 @@ const TaskList = ({ collectorId }: { collectorId: string | null }) => {
     }
   };
 
+
+  
+
   useEffect(() => {
     console.log('TaskList collectorId changed:', collectorId);
   }, [collectorId]);

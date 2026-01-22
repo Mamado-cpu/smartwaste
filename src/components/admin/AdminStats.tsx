@@ -67,7 +67,7 @@ const AdminStats = () => {
       </Card>
       <Card className="p-6">
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold mb-2">Collection Statistics</h2>
+          <h2 className="text-2xl font-bold mb-2">Report Statistics</h2>
           <div>
             <select value={days} onChange={(e) => setDays(parseInt(e.target.value || '14', 10))} className="p-2 rounded border">
               <option value={7}>Last 7 days</option>
@@ -82,11 +82,11 @@ const AdminStats = () => {
             <p className="text-2xl font-semibold">{stats.totalReports}</p>
           </div>
           <div className="p-4 border rounded-lg">
-            <p className="text-sm text-muted-foreground">Total completed</p>
-            <p className="text-2xl font-semibold">{stats.totalCompleted}</p>
+            <p className="text-sm text-muted-foreground">Total cleared reports</p>
+            <p className="text-2xl font-semibold">{stats.totalClearedReports}</p>
           </div>
           <div className="p-4 border rounded-lg">
-            <p className="text-sm text-muted-foreground">Completed today</p>
+            <p className="text-sm text-muted-foreground">Cleared today</p>
             <p className="text-2xl font-semibold">{stats.completedToday}</p>
           </div>
         </div>

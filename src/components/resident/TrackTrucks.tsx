@@ -1,4 +1,3 @@
-
 import { useEffect, useState, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,6 +34,7 @@ const TrackTrucks = () => {
   const [collectors, setCollectors] = useState<any[]>([]);
   const [notifyEnabled, setNotifyEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [userLocation, setUserLocation] = useState<{ lat: number, lng: number } | null>(null);
   const pollRef = useRef<number | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const residentLocationRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -44,39 +44,41 @@ const TrackTrucks = () => {
   // match collector data structure
 
     const mergeCollectors = (incoming: any[]) => {
-    setCollectors(prev => {
-      const map = new Map(prev.map(c => [c.collectorId, c]));
-      incoming.forEach(c => {
-        const prevCollector = map.get(c.collectorId);
-        map.set(c.collectorId, {
-          ...prevCollector,
-          ...c,
-   
-           vehicleNumber:
-          c.vehicleNumber ?? prevCollector?.vehicleNumber,
+    setCollectors((prev) => {
+      const map = new Map(prev.map((c) => [c.collectorId, c])); // Use collectorId as the unique key
 
-           vehicleType:
-          c.vehicleType ?? prevCollector?.vehicleType,
-
+      incoming
+        .filter((c) => c.currentLat && c.currentLng) // Only include trucks with valid locations
+        .forEach((c) => {
+          map.set(c.collectorId, {
+            ...map.get(c.collectorId), // Merge with existing data if present
+            ...c, // Overwrite with new data
+            vehicleNumber: c.vehicleNumber ?? map.get(c.collectorId)?.vehicleNumber,
+            vehicleType: c.vehicleType ?? map.get(c.collectorId)?.vehicleType,
+          });
         });
-      });
-      return Array.from(map.values());
+
+      return Array.from(map.values()); // Return unique collectors
     });
   };
 
 
   const fetchLocations = async () => {
     try {
-      const res = await api.get('/locations/collectors');
+      const res = await api.get(`/locations/collectors?timestamp=${Date.now()}`); // Add cache-busting parameter
       const data = res.data || {};
 
-     const mapped = Object.entries(data)
+      const mapped = Object.entries(data)
         .map(([_, v]: any) => normalizeCollector(v))
-        .filter(c => c.currentLat && c.currentLng);
+        .filter((c) => c.currentLat && c.currentLng); // Only include trucks with valid locations
 
-      mergeCollectors(mapped);
+      if (mapped.length === 0) {
+        setCollectors([]); // Clear state if no valid trucks are found
+      } else {
+        mergeCollectors(mapped);
+      }
     } catch {
-      setCollectors([]);
+      setCollectors([]); // Clear state on error
     } finally {
       setLoading(false);
     }
@@ -86,105 +88,88 @@ const TrackTrucks = () => {
     let mounted = true;
     const token = localStorage.getItem('auth_token');
 
+    // Fetch truck details immediately on component mount
+    fetchLocations();
+
+    
+
     // Try to obtain resident's current location for proximity checks
     if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        residentLocationRef.current = { 
-          lat: pos.coords.latitude, 
-          lng: pos.coords.longitude };
-      }, () => {}, { enableHighAccuracy: true, maximumAge: 600000, timeout: 10000 });
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          residentLocationRef.current = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          };
+        },
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 600000, timeout: 10000 }
+      );
     }
 
     // Prefer socket.io for lower latency, fallback to SSE/polling
     try {
       const base = (api.defaults.baseURL || '').replace(/\/api$/, '');
-      const socket = (window as any).__resident_socket || clientIo(base, { query: { role: 'resident' }, auth: { token } });
+      const socket =
+        (window as any).__resident_socket ||
+        clientIo(base, { query: { role: 'resident' }, auth: { token } });
       (window as any).__resident_socket = socket;
 
       socket.on('collector:update', (payload: any) => {
         if (!mounted) return;
         try {
-
           const arr = Array.isArray(payload) ? payload : [payload];
           const mapped = arr.map((v: any) => normalizeCollector(v));
 
-          mergeCollectors(mapped);
+          mergeCollectors(mapped); // Update state immediately with new data
 
-          // proximity notifications
-          if (notifyEnabled && residentLocationRef.current) {
-            mapped.forEach((c: any) => {
-              try {
-                const dist = distanceMeters(
-                  residentLocationRef.current!.lat, 
-                  residentLocationRef.current!.lng, 
-                  c.currentLat, 
-                  c.currentLng);
-                if (dist <= 500) {
-                  const last = notifiedRef.current[c.collectorId] || 0;
-                  const now = Date.now();
-                  if (now - last > (5 * 60 * 1000)) {
-                    notifiedRef.current[c.collectorId] = now;
-                    toast(`Collector nearby: ${c.vehicleNumber || 'Truck'} (${Math.round(dist)} m)`);
-                    if (window.Notification && Notification.permission === 'granted') {
-                      try { new Notification('Collector nearby', { body: `${c.vehicleNumber || 'Truck'} is ${Math.round(dist)} m away` }); } catch (e) {}
-                    }
-                  }
-                }
-              } catch (e) {}
-            });
-          }
           setLoading(false);
-        } catch (e) {}
+        } catch (e) {
+          console.error('Error processing collector:update event:', e);
+        }
       });
 
-      socket.on('connect_error', () => {
-        // fallback to SSE/polling if socket fails
+      socket.on('collector:start', (collector) => {
+        if (!mounted) return;
+        try {
+          console.log(`collector:start event received for collectorId: ${collector.collectorId}`); // Debugging log
 
-        try { 
-          if ((window as any).__resident_socket) { (window as any).__resident_socket = null; } } catch (e) {}
-        const streamUrl = `${api.defaults.baseURL}/locations/stream${token ? `?token=${token}` : ''}`;
-        const es = new EventSource(streamUrl);
-        esRef.current = es;
-        es.onmessage = (evt) => {
-          if (!mounted) return;
-          try {
-            const data = JSON.parse(evt.data || '{}');
-            const arr = Object.entries(data || {}).map(([collectorId, v]: any) => normalizeCollector({
-              collectorId,
-              ...v,
-             })
-            );
-            mergeCollectors(arr.filter(c => c.currentLat && c.currentLng));
-            // proximity notifications
+          setCollectors((prev) => {
+            const updatedCollectors = [...prev, collector]; // Add the new collector
 
-            if (notifyEnabled && residentLocationRef.current) {
-              arr.forEach((c: any) => {
-                try {
-                  const dist = distanceMeters(residentLocationRef.current!.lat, residentLocationRef.current!.lng, c.currentLat, c.currentLng);
-                  if (dist <= 500) {
-                    const last = notifiedRef.current[c.collectorId] || 0;
-                    const now = Date.now();
-                    if (now - last > (5 * 60 * 1000)) {
-                      notifiedRef.current[c.collectorId] = now;
-                      toast(`Collector nearby: ${c.vehicleNumber || 'Truck'} (${Math.round(dist)} m)`);
-                      if (window.Notification && Notification.permission === 'granted') {
-                        try { new Notification('Collector nearby', { body: `${c.vehicleNumber || 'Truck'} is ${Math.round(dist)} m away` }); } catch (e) {}
-                      } else if (window.Notification && Notification.permission !== 'denied') {
-                        Notification.requestPermission().then(p => { if (p === 'granted') { try { new Notification('Collector nearby', { body: `${c.vehicleNumber || 'Truck'} is ${Math.round(dist)} m away` }); } catch (e) {} } });
-                      }
-                    }
-                  }
-                } catch (e) {}
-              });
+            console.log('Updated collectors state after start:', updatedCollectors); // Debugging log
+
+            return updatedCollectors; // Ensure a new array reference to trigger re-render
+          });
+        } catch (e) {
+          console.error('Error processing collector:start event:', e);
+        }
+      });
+
+      socket.on('collector:stop', (collectorId: string) => {
+        if (!mounted) return;
+        try {
+          console.log(`collector:stop event received for collectorId: ${collectorId}`); // Debugging log
+
+          setCollectors((prev) => {
+            const updatedCollectors = prev.filter((c) => c.collectorId !== collectorId); // Remove the collector
+
+            console.log('Updated collectors state after stop:', updatedCollectors); // Debugging log
+
+            if (updatedCollectors.length === 0) {
+              toast.info('No trucks found'); // Notify resident if no trucks are available
             }
-            setLoading(false);
-          } catch (err) {}
-        };
-        es.onerror = () => {
-          if (esRef.current) { esRef.current.close(); esRef.current = null; }
-          fetchLocations();
-          pollRef.current = window.setInterval(fetchLocations, POLL_MS) as unknown as number;
-        };
+
+            return updatedCollectors; // Ensure a new array reference to trigger re-render
+          });
+        } catch (e) {
+          console.error('Error processing collector:stop event:', e);
+        }
+      });
+
+      socket.on('connect_error', (err) => {
+        console.error('Socket connection error:', err); // Debugging log
+        toast.error('Connection lost. Please check your network.');
       });
     } catch (err) {
       // fallback to SSE/polling
@@ -192,14 +177,25 @@ const TrackTrucks = () => {
       pollRef.current = window.setInterval(fetchLocations, POLL_MS) as unknown as number;
     }
 
+        // --- AUTO REMOVE STALE COLLECTORS ---
+    const interval = setInterval(() => {
+      setCollectors((prev) =>
+        prev.filter(c => c.lastLocationUpdate && (Date.now() - new Date(c.lastLocationUpdate).getTime() <= 60_000))
+      );
+    }, 5000);
+
     return () => {
       mounted = false;
       if (pollRef.current) window.clearInterval(pollRef.current);
       if (esRef.current) {
-        try { esRef.current.close(); } catch (e) {}
+        try {
+          esRef.current.close();
+        } catch (e) {}
       }
     };
   }, []);
+
+
 
   // Haversine formula (meters)
   const distanceMeters = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -214,7 +210,10 @@ const TrackTrucks = () => {
 
   if (loading) return <Card className="p-6"><p className="text-center">Loading...</p></Card>;
 
-  const markers = collectors.map(c => ({ 
+  // Use only active collectors for cards & markers
+  const activeCollectors = collectors.filter(c => c.currentLat && c.currentLng);
+
+  const markers = activeCollectors.map(c => ({ 
     id: c.collectorId, 
     position: [
       c.currentLat! + jitter(), 
@@ -241,65 +240,71 @@ const TrackTrucks = () => {
             <Button size="sm" variant={notifyEnabled ? 'destructive' : 'ghost'} onClick={() => setNotifyEnabled(s => !s)}>
               {notifyEnabled ? 'Disable Nearby Alerts' : 'Enable Nearby Alerts'}
             </Button>
-            <Button size="sm" className="ml-2" onClick={async () => {
+            <Button size="sm" className="ml-2" onClick={() => {
               if (!navigator.geolocation) return toast.error('Geolocation not supported');
-              navigator.geolocation.getCurrentPosition(async (pos) => {
-                const lat = pos.coords.latitude; const lng = pos.coords.longitude;
-                try {
-                  const res = await api.get(`/locations/nearby?lat=${lat}&lng=${lng}&radiusMeters=1000`);
-                  const data = res.data || [];
-                  if (data.length === 0) return toast.info('No collectors nearby');
-                  // center map to first and show markers via setCollectors
+              navigator.geolocation.getCurrentPosition((pos) => {
 
-                  mergeCollectors(data.map(c => normalizeCollector(c)));
-                  
-                  toast.success(`${data.length} nearby collector(s) found`);
-                } catch (e) { console.error(e); toast.error('Failed to fetch nearby collectors'); }
-              }, () => toast.error('Failed to get location'), { enableHighAccuracy: true });
-            }}>Find Nearby</Button>
+              setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+
+                
+              }, () => {
+                toast.error('Unable to fetch your location');
+              }, { enableHighAccuracy: true, maximumAge: 600000, timeout: 10000 });
+            }}>
+              Toggle My Location
+            </Button>
           </div>
         </div>
-
-        {collectors.length === 0 ? (
-          <p className="text-center text-muted-foreground py-8">No active trucks</p>
-        ) : (
-          <div className="space-y-3">
-            {collectors.map((collector) => (
-              <div key={collector.collectorId} className="border rounded-lg p-4 hover:bg-accent/50 transition-colors">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="font-medium">{collector.vehicleNumber || 'Truck'}</p>
-
-                      <p className="text-sm text-muted-foreground">
-                      {collector.vehicleType }
-                    </p>
-                    
-                    <p className="text-sm text-muted-foreground">
-                      Location: {collector.currentLat?.toFixed(4)}, {collector.currentLng?.toFixed(4)}
-                    </p>
-                    {collector.lastLocationUpdate && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Updated: {new Date(collector.lastLocationUpdate).toLocaleTimeString()}
-                      </p>
-                    )}
-                  </div>
-                  <Badge className={collector.isAvailable ? 'bg-green-500/10 text-green-600' : 'bg-yellow-500/10 text-yellow-600'}>
-                    {collector.isAvailable ? 'Available' : 'Not Available'}
-                  </Badge>
-                </div>
+        <div className="grid grid-cols-2 gap-4">
+          {activeCollectors.length === 0 && !loading && (
+            <p className="text-center text-muted-foreground py-4 col-span-2">
+              No collectors found. Ensure your location is enabled and try again.
+            </p>
+          )}
+          {activeCollectors.map(collector => (
+            <div key={collector.collectorId} className="p-4 border rounded-md shadow-sm space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">{collector.vehicleNumber || 'Truck'}</h3>
+                <Badge variant={collector.isAvailable ? 'default' : 'destructive'}>{collector.isAvailable ? 'Available' : 'Not Available'}</Badge>
               </div>
-            ))}
-          </div>
-        )}
+              <div className="text-sm text-muted-foreground">
+                <div>Lat: {collector.currentLat.toFixed(4)}</div>
+                <div>Lng: {collector.currentLng.toFixed(4)}</div>
+                <div>Last Updated: {collector.lastLocationUpdate ? new Date(collector.lastLocationUpdate).toLocaleString() : 'N/A'}</div>
+              </div>
+              <Button size="sm" variant="outline" className="w-full" onClick={() => {
+                if (!userLocation) {
+                  toast.error('Please enable your location first');
+                  return;
+                }
+                window.open(
+                  `https://www.google.com/maps/dir/?api=1&destination=${collector.currentLat},${collector.currentLng}&origin=${userLocation.lat},${userLocation.lng}&travelmode=driving`,
+                  '_blank'
+                );
+              }}>
+                Navigate to Collector
+              </Button>
+            </div>
+          ))}
+        </div>
       </Card>
-
       <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-3">Map View</h3>
-        <MapView
-          center={markers[0] ? markers[0].position : [13.4549, -16.579]}
-          zoom={12}
-          markers={markers}
-        />
+        <h3 className="text-xl font-bold mb-4">Map View</h3>
+        <div className="h-96">
+          <MapView
+            markers={[
+              ...markers,
+              userLocation && {
+                id: 'resident',
+                position: [userLocation.lat, userLocation.lng],
+                title: 'Your Location',
+                description: 'This is your current location',
+              },
+            ].filter(Boolean)}
+            center={userLocation ? [userLocation.lat, userLocation.lng] : activeCollectors[0] ? [activeCollectors[0].currentLat, activeCollectors[0].currentLng] : [13.4531, -16.5780]}
+            zoom={12}
+          />
+        </div>
       </Card>
     </div>
   );

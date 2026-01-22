@@ -1,5 +1,3 @@
-
-
 import React, { useEffect, useRef } from 'react';
 import {
   MapContainer,
@@ -44,6 +42,9 @@ interface MapViewProps {
   center: [number, number];
   zoom: number;
   markers: MarkerItem[];
+  collectorLocation?: { lat: number; lng: number };
+  taskLocations?: { lat: number; lng: number }[];
+  userLocation?: { lat: number; lng: number };
 }
 
 /* 🔹 Recenter ONLY ONCE (StrictMode safe) */
@@ -65,6 +66,9 @@ const MapView: React.FC<MapViewProps> = ({
   center,
   zoom,
   markers,
+  collectorLocation,
+  taskLocations,
+  userLocation,
 }) => {
   return (
     <MapContainer
@@ -81,7 +85,7 @@ const MapView: React.FC<MapViewProps> = ({
         <Marker
           key={m.id}
           position={m.position}
-          icon={truckIcon}
+          icon={truckIcon as L.Icon}
         >
           <Popup>
             <strong>{m.title}</strong>
@@ -90,6 +94,35 @@ const MapView: React.FC<MapViewProps> = ({
           </Popup>
         </Marker>
       ))}
+
+      {collectorLocation && (
+        <Marker
+          position={[collectorLocation.lat, collectorLocation.lng]}
+          icon={truckIcon as L.Icon}
+        >
+          <Popup>Collector Location</Popup>
+        </Marker>
+      )}
+
+      {taskLocations &&
+        taskLocations.map((task, index) => (
+          <Marker
+            key={`task-${index}`}
+            position={[task.lat, task.lng]}
+            icon={truckIcon as L.Icon}
+          >
+            <Popup>Task Location</Popup>
+          </Marker>
+        ))}
+
+      {userLocation && (
+        <Marker
+          position={[userLocation.lat, userLocation.lng]}
+          icon={truckIcon as L.Icon}
+        >
+          <Popup>Your Location</Popup>
+        </Marker>
+      )}
 
       {markers.length > 0 && (
         <RecenterOnce position={markers[0].position} />
